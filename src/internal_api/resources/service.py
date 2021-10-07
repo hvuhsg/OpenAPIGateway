@@ -3,10 +3,13 @@ from uuid import uuid4
 from datetime import datetime
 import json
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, AnyHttpUrl, constr, validator, Field
 from openapi_spec_validator import validate_spec
+from openapi_spec_validator.exceptions import OpenAPIValidationError
 
+from context import get_db, get_services
+from models.services import Services
 from db.mongo import MongoDB
 
 service_resource = APIRouter(prefix="/service", tags=["service"])
@@ -19,7 +22,10 @@ class NewService(BaseModel):
 
     @validator("openapi_spec")
     def validate_openapi_spec(cls, spec):
-        validate_spec(spec=spec)
+        try:
+            validate_spec(spec=spec)
+        except OpenAPIValidationError:
+            raise ValueError("Invalid openapi spec")
         return spec
 
 
@@ -44,51 +50,58 @@ class ServiceModel(BaseModel):
 
 
 @service_resource.delete("")
-def remove(service_id: str):
-    services_col = MongoDB.get_instance().services
-    removed = services_col.delete_one({"id": service_id})
-    return {"removed": bool(removed.deleted_count)}
+def remove(service_id: str, db: MongoDB = Depends(get_db), services: Services = Depends(get_services)):
+    removed = db.delete_service(service_id)
+    services.remove_service(service_id)
+    services.remove_service(service_id)
+    return {"removed": removed}
 
 
 @service_resource.put("", status_code=201)
-def create(service: NewService):
-    services_col = MongoDB.get_instance().services
-    if services_col.find_one({"url": service.url}, {"_id": 1}) or services_col.find_one({"name": service.name}, {"_id": 1}):
+def create(service: NewService, db: MongoDB = Depends(get_db), services: Services = Depends(get_services)):
+    if db.get_service(service.url, check_existence=True, find_by="url") \
+            or db.get_service(service.name, check_existence=True, find_by="name"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="URL or name are all ready exist.")
     new_service_id = str(uuid4())
-    while services_col.find_one({"id": new_service_id}) is not None:
+    while db.get_service(new_service_id, check_existence=True):
         new_service_id = str(uuid4())
     new_service = ServiceModel(id=new_service_id, **service.dict())
-    services_col.insert_one(new_service.dict(escape=True))
+    service_dict = new_service.dict(escape=True)
+    db.create_service(service_dict)
+    services.add_service(new_service_id)
     return {"service_id": new_service_id}
 
 
 @service_resource.get("")
-def get(service_id: str):
-    services_col = MongoDB.get_instance().services
-    service_dict = services_col.find_one({"id": service_id}, {"_id": 0})
+def get(service_id: str, db: MongoDB = Depends(get_db)):
+    service_dict = db.get_service(field_value=service_id)
     if service_dict is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"service with id '{service_id}' not found")
     return ServiceModel(**service_dict).dict()
 
 
 @service_resource.patch("")
-def update(service_id: str, field: str, value: Any):
-    services_col = MongoDB.get_instance().services
+def update(
+        service_id: str, field: str, value: Any, db: MongoDB = Depends(get_db), services: Services = Depends(get_services)
+):
     if field in ("id", ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"cant update field '{field}'")
-    service_dict = get(service_id)
+    service_dict = db.get_service(service_id)
     service = ServiceModel(**service_dict)
     try:
         setattr(service, field, value)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Field not exist or invalid value")
-    updated = services_col.update_one({"id": service_id}, {"$set": service.dict(escape=True)})
-    return {"updated": bool(updated.modified_count)}
+
+    updated_value = service.dict(escape=True)[field]
+    updated_result = db.update_service(service_id, field, updated_value)
+    updated = bool(updated_result.modified_count)
+    if updated:
+        services.updated_service(service_id)
+    return {"updated": updated}
 
 
 @service_resource.get("/list")
-def service_list():
-    services_col = MongoDB.get_instance().services
-    services = list(services_col.find({}, {"id": 1, "name": 1, "_id": 0}))
+def service_list(db: MongoDB = Depends(get_db)):
+    services = db.get_all_services(include_fields=["id", "name"], exclude_fields=["_id"])
     return services

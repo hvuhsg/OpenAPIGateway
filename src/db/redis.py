@@ -1,13 +1,11 @@
 import redis
 
-from .interface import DBInterface
 
-
-class RedisDB(DBInterface):
+class RedisDB:
     _instance = None
 
     @classmethod
-    def get_connection(cls):
+    def get_instance(cls):
         if cls._instance is None:
             raise RuntimeError("Initiate class first (use __init__)")
         return cls._instance
