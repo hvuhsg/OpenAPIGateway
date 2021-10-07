@@ -1,7 +1,6 @@
 from fastapi import Request as FastAPIRequest
-from openapi_core.validation.request.datatypes import OpenAPIRequest, RequestValidationResult
+from openapi_core.validation.request.datatypes import OpenAPIRequest
 from openapi_core.validation.request.datatypes import RequestParameters
-
 
 
 class Headers(dict):
@@ -15,20 +14,27 @@ class Request(OpenAPIRequest):
             service_path,
             path,
             method: str,
+            client,
             body: str,
             content_type,
             query_params,
             headers,
-            cookie: dict,
+            cookies: dict,
     ):
         self.base_url = base_url
         self.service_path = service_path
         self.path = path
         self.full_url_pattern = str(base_url) + str(path)
+
         self.method = method.lower()
-        self.body = body
         self.mimetype = content_type
-        self.parameters = RequestParameters(query=query_params, header=headers, cookie=cookie, path={})
+        self.client = client
+
+        self.body = body
+        self.cookies = cookies
+        self.query_parameters = query_params
+        self.headers = headers
+        self.parameters = RequestParameters(query=query_params, header=headers, cookie=cookies, path={})
 
     @classmethod
     async def from_fastapi_request(cls, r: FastAPIRequest):
@@ -45,9 +51,10 @@ class Request(OpenAPIRequest):
             service_path=service_path,
             path=request_path,
             headers=headers,
+            client=r.client,
             query_params=query_params,
             body=body,
             content_type=content_type,
             method=r.method.lower(),
-            cookie=r.cookies,
+            cookies=r.cookies,
         )
