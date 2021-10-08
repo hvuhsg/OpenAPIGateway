@@ -9,7 +9,8 @@ from openapi_spec_validator import validate_spec
 from openapi_spec_validator.exceptions import OpenAPIValidationError
 
 from context import get_db, get_services
-from models.services import Services
+from context.services import Services
+
 from db.mongo import MongoDB
 
 service_resource = APIRouter(prefix="/service", tags=["service"])
