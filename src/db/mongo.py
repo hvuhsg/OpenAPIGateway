@@ -1,10 +1,6 @@
-import os
-from dotenv import load_dotenv
 from qwhale_client import APIClient
 
-
-load_dotenv(".env")
-QWHALE_TOKEN = os.getenv("QWHALE_TOKEN")
+from context import get_settings
 
 
 class MongoDB:
@@ -20,7 +16,7 @@ class MongoDB:
         if self.__class__._instance is not None:
             raise RuntimeError("Singleton all ready initialized ( use MongoDB.get_instance() )")
 
-        self._client = APIClient(QWHALE_TOKEN)
+        self._client = APIClient(get_settings().qwhale_token)
         self.db = self._client.get_database()
         self.services = self.db.get_collection("services")
 
