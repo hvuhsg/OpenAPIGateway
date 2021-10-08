@@ -59,3 +59,5 @@ class Services:
     def get_service(self, prefix_path) -> Optional[Service]:
         return self.__services.get(prefix_path)
 
+    def __iter__(self):
+        return iter(self.__services.values())

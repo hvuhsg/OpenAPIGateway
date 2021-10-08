@@ -38,8 +38,11 @@ class Request(OpenAPIRequest):
 
     @classmethod
     async def from_fastapi_request(cls, r: FastAPIRequest):
-        request_path = '/'.join(r.url.path.split("/")[1:])
-        service_path = '/'.join(r.url.path.split("/")[2:])
+        segments = r.url.path.split("/")
+        segments.pop(1)  # remove '/external'
+        request_path = '/'.join(segments)[1:]
+        service_path = '/'.join(r.url.path.split("/")[3:])
+
         query_params = {k: v for k, v in r.query_params.items()}
         full_content_type = r.headers.get("Content-Type")
         content_type = None if full_content_type is None else full_content_type.split(";")[0].lower()
